@@ -1,0 +1,11 @@
+{
+  "name": "midgard-depths",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.20.0",
+    "knex": "^0.21.6",
+    "pg": "^8.4.0"
+  }
+}
