@@ -1,7 +1,6 @@
 // Update with your config settings.
 
-module.exports = {
-
+export default {
   development: {
     client: 'pg',
     connection: {
