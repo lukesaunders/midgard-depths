@@ -3,15 +3,27 @@ import numeral from 'numeral';
 import knex from '../lib/database.mjs';
 
 process.on('unhandledRejection', up => { throw up });
+const debug = false;
 
 async function fetchNodeDepth({ height, timestamp }) {
   const response = await axios.get('http://chaosnet.rune:1317/thorchain/pool/bnb.bnb', { params: { height }});
   return response.data['balance_rune'];
 }
 
+async function fetchMidgardDepthLogPromise({ height, timestamp }) {
+  // select rune_e8 from block_pool_depths where block_timestamp = 1602017868601953886 and pool = 'BNB.BNB';
+  const blockPoolDepth = await knex('block_pool_depths').
+    select('rune_e8').
+    where({ pool: 'BNB.BNB' }).
+    whereRaw('block_timestamp <= ?', timestamp).
+    first();
+  if (debug) console.log(blockPoolDepth);
+  if (!blockPoolDepth) return 0;
+  return blockPoolDepth['rune_e8'];
+}
+
 async function buildTotalForBlock({ height, timestamp }) {
   // select sum(rune_e8) from stake_events where pool = 'BNB.BNB';
-  const debug = false;
   const { totalstakes } = await knex('stake_events').
     select(knex.raw('sum(rune_e8) as totalStakes')).
     where({ pool: 'BNB.BNB'}).
@@ -154,17 +166,27 @@ async function outputForHeight({ height }) {
   const { timestamp } = await knex('block_log').select('timestamp').where({ height }).first();
   const calculatedDepthPromise = buildTotalForBlock({ height, timestamp });
   const nodeDepthPromise = fetchNodeDepth({ height, timestamp });
-  const [calculatedDepth, nodeDepth] = await Promise.all([calculatedDepthPromise, nodeDepthPromise]);
-  return([height, timestamp, numeral(calculatedDepth).format('0,0'), numeral(nodeDepth).format('0,0'), numeral((calculatedDepth - nodeDepth)).format('0,0')]);
+  const midgardDepthLogPromise = fetchMidgardDepthLogPromise({ height, timestamp });
+  const [calculatedDepth, nodeDepth, midgardDepthLog] = await Promise.all([calculatedDepthPromise, nodeDepthPromise, midgardDepthLogPromise]);
+  return([
+    height,
+    timestamp,
+    numeral(calculatedDepth).format('0,0'),
+    numeral(nodeDepth).format('0,0'),
+    numeral((calculatedDepth - nodeDepth)).format('0,0'),
+    numeral(midgardDepthLog).format('0,0'),
+    numeral((calculatedDepth - midgardDepthLog)).format('0,0'),
+  ]);
 }
 
 async function run() {
   console.log('run');
   let promises = []
-  for (let height = 700000; height < 716800; height++) {
+  const startHeight = process.env['START_HEIGHT'] || 700000;
+  for (let height = startHeight; height < 716800; height++) {
     const outputPromise = outputForHeight({ height });
     promises.push(outputPromise);
-    if (promises.length == 10) {
+    if (promises.length == 1) {
       const results = await Promise.all(promises);
       for (const returnVals of results) {
         console.log(returnVals.join(' '));        
